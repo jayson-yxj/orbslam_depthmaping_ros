@@ -65,7 +65,8 @@ KeyFrameTrajectory.txt
 CameraTrajectory.txt
 
 # 词汇表文件（通常很大）
-# Vocabulary/
+Vocabulary/*.txt
+Vocabulary/ORBvoc.txt
 
 # 模型权重文件（通常很大）
 *.pth
@@ -77,6 +78,12 @@ CameraTrajectory.txt
 vis_depth/
 output/
 results/
+
+# 视频文件
+*.mp4
+*.avi
+*.mov
+ros_orbslam_ws/src/video/
 
 # ROS 特定
 *.bag
