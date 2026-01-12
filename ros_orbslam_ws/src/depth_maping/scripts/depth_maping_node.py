@@ -1,7 +1,6 @@
 import argparse
 import shutil
 import cv2
-import glob
 import matplotlib
 import numpy as np
 import os
@@ -9,6 +8,9 @@ import sys
 import torch
 import open3d as o3d
 import pypose as pp
+import sensor_msgs.point_cloud2 as pc2
+import rospy
+import std_msgs.msg
 
 # 添加当前脚本目录到 Python 路径
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,7 +18,6 @@ if script_dir not in sys.path:
     sys.path.insert(0, script_dir)
 
 from depth_anything_v2.dpt import DepthAnythingV2
-import rospy
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 
@@ -24,10 +25,14 @@ from depth_maping.msg import ImagePose
 from scipy.spatial.transform import Rotation as R
 
 from sensor_msgs.msg import PointCloud2, PointField
-import sensor_msgs.point_cloud2 as pc2
 from std_msgs.msg import Header
 
 from sklearn.linear_model import RANSACRegressor # 用于平面拟合
+
+# ROS OccupancyGrid
+from nav_msgs.msg import OccupancyGrid
+from geometry_msgs.msg import Pose
+
 '''
 indoor  outdoor
 '''
@@ -117,6 +122,13 @@ class Img2DepthMaping:
         if self.enable_sliding_window:
             rospy.loginfo(f"滑动窗口大小: {self.sliding_window_size} 帧")
 
+        # **************** OccupancyGrid 地图发布器 **************** #
+        self.frame_counter = 0
+        self.map_update_interval = 1           # 每 5 帧更新一次地图（可调，5~20 都合理）
+        self.map_pub = rospy.Publisher('/projected_map', OccupancyGrid, queue_size=1, latch=True)
+        rospy.loginfo("2D OccupancyGrid 地图发布器已初始化: /projected_map")
+
+
         # ************************ 点云查看器 ********************** #
         # 添加可视化开关，避免 GLX 错误
         self.enable_visualization = rospy.get_param('~enable_visualization', False)
@@ -149,6 +161,8 @@ class Img2DepthMaping:
         # 检查节点是否正在关闭
         if self.is_shutdown or rospy.is_shutdown():
             return
+
+        self.frame_counter += 1
 
         try:
             cv_image = self.bridge.imgmsg_to_cv2(data.image, "bgr8")
@@ -244,7 +258,18 @@ class Img2DepthMaping:
             else:
                 # 累积模式：持续累加所有点云
                 self.all_point_cloud += point_cloud
-            
+
+            if self.frame_counter % self.map_update_interval == 0:
+                occ_msg = self.project_to_2d_occupancy(
+                    resolution=0.5,        # 可调：0.02~0.1
+                    height_min=0.5,        # 过滤地面噪声
+                    height_max=2.0,         # 过滤天花板
+                    occupied_thresh=5       # 点数阈值，可根据密度调 3~10
+                )
+                if occ_msg is not None:
+                    self.map_pub.publish(occ_msg)
+                    rospy.loginfo_throttle(5, f"已发布2D Occ地图 ({occ_msg.info.width}x{occ_msg.info.height}, res={occ_msg.info.resolution}m)")
+
             # 只在可视化启用时更新窗口
             if self.enable_visualization:
                 try:
@@ -472,6 +497,74 @@ class Img2DepthMaping:
         R_wc_loaded = np.array(loaded_data["R_wc"])
         R_cw_loaded = np.array(loaded_data["R_cw"])
         return R_cw_loaded,R_wc_loaded
+
+
+    def project_to_2d_occupancy(self, 
+                                resolution=0.05, 
+                                height_min=0.05, 
+                                height_max=2.0,
+                                occupied_thresh=5):
+        """
+        将当前 all_point_cloud 投影为 2D OccupancyGrid
+        """
+        if len(self.all_point_cloud.points) == 0:
+            rospy.logwarn_once("点云为空，跳过生成2D地图")
+            return None
+        
+        points = np.asarray(self.all_point_cloud.points)
+        
+        # 高度过滤
+        mask = (points[:, 1] >= height_min) & (points[:, 1] <= height_max)
+        points_xy = np.column_stack((points[mask, 0], points[mask, 2]))  # X, Y
+        
+        if len(points_xy) < 50:
+            rospy.logwarn_once("高度范围内点太少，跳过生成地图")
+            return None
+        
+        # 计算地图边界（加1m margin）
+        x_min, y_min = points_xy.min(axis=0) - 1.0
+        x_max, y_max = points_xy.max(axis=0) + 1.0
+        
+        width = int(np.ceil((x_max - x_min) / resolution))
+        height = int(np.ceil((y_max - y_min) / resolution))
+        
+        # 计数网格
+        grid_counts = np.zeros((height, width), dtype=np.int16)
+        
+        # 向量化映射
+        ix = np.floor((points_xy[:, 0] - x_min) / resolution).astype(int)
+        iy = np.floor((points_xy[:, 1] - y_min) / resolution).astype(int)
+        
+        valid = (ix >= 0) & (ix < width) & (iy >= 0) & (iy < height)
+        ix, iy = ix[valid], iy[valid]
+        np.add.at(grid_counts, (-iy, ix), 1) # 注意 Y 轴取反 不然2d occmap会颠倒
+        
+        # 生成 occupancy 数据
+        data = np.zeros((height, width), dtype=np.int8)
+        data[grid_counts >= occupied_thresh] = 100      # occupied
+        data[(grid_counts > 0) & (grid_counts < occupied_thresh)] = -1  # unknown
+        # 其余为 0 (free)
+        
+        # ROS OccupancyGrid 要求从左下角开始，Y轴向上 → 翻转
+        data = data[::-1, :]
+        
+        # 构造消息
+        occ_msg = OccupancyGrid()
+        occ_msg.header.stamp = rospy.Time.now()
+        occ_msg.header.frame_id = "map"
+        
+        occ_msg.info.resolution = resolution
+        occ_msg.info.width = width
+        occ_msg.info.height = height
+        occ_msg.info.origin.position.x = x_min
+        occ_msg.info.origin.position.y = y_min
+        occ_msg.info.origin.position.z = 0.0
+        occ_msg.info.origin.orientation.w = 1.0
+        
+        occ_msg.data = data.flatten().tolist()
+        
+        return occ_msg
+
 
     def align_map_to_ground(self,point_cloud):
         """
