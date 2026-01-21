@@ -96,6 +96,9 @@ class PipelineManager:
         t0 = time.time()
         pc_config = self.config.get('point_cloud', {})
         
+        # 获取最大深度参数
+        max_depth = pc_config.get('filter', {}).get('depth_range', [0.1, 100.0])[1]
+        
         # 检查是否使用裁剪模式
         if 'crop_params' in pc_config:
             points, colors = self.point_cloud_generator.generate_with_crop(
@@ -103,7 +106,7 @@ class PipelineManager:
             )
         else:
             points, colors = self.point_cloud_generator.generate(
-                depth, image, camera_params, pose
+                depth, image, camera_params, pose, max_depth=max_depth
             )
         pc_gen_time = time.time() - t0
         if self.enable_profiling:

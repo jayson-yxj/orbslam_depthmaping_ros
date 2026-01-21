@@ -12,6 +12,8 @@ from nav_msgs.msg import Odometry
 from depth_maping.msg import ImagePose
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+import yaml
+import os
 
 class TFPublisher:
     def __init__(self):
@@ -26,6 +28,9 @@ class TFPublisher:
         self.odom_frame = rospy.get_param('~odom_frame', 'odom')
         self.base_link_frame = rospy.get_param('~base_link_frame', 'base_link')
         self.camera_frame = rospy.get_param('~camera_frame', 'camera')
+        
+        # 加载尺度因子（从配置文件）
+        self.translation_scale = self._load_translation_scale()
         
         # 位姿缓存
         self.current_pose = None
@@ -50,6 +55,29 @@ class TFPublisher:
         
         rospy.loginfo("✓ TF 发布节点已启动")
         rospy.loginfo(f"  TF 树: {self.map_frame} -> {self.odom_frame} -> {self.base_link_frame} -> {self.camera_frame}")
+        rospy.loginfo(f"  平移尺度因子: {self.translation_scale}")
+    
+    def _load_translation_scale(self):
+        """从配置文件加载平移尺度因子"""
+        try:
+            # 配置文件路径（相对于当前脚本）
+            config_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                '../../depth_maping/config/default_config.yaml'
+            )
+            
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = yaml.safe_load(f)
+                scale = config.get('pose', {}).get('translation_scale', 18)
+                rospy.loginfo(f"✓ 从配置文件加载尺度因子: {scale}")
+                return scale
+            else:
+                rospy.logwarn(f"⚠️  配置文件不存在: {config_path}，使用默认值18")
+                return 18
+        except Exception as e:
+            rospy.logwarn(f"⚠️  加载配置文件失败: {e}，使用默认值18")
+            return 18
     
     def publish_static_tf(self):
         """
@@ -93,7 +121,7 @@ class TFPublisher:
         rot_cv = R.from_quat(quat_cv)
         T_wc = np.eye(4)
         T_wc[:3, :3] = rot_cv.as_matrix()
-        T_wc[:3, 3] = pos_cv * 16  # 应用尺度因子
+        T_wc[:3, 3] = pos_cv * self.translation_scale  # 应用尺度因子（从配置文件加载）
         
         # 步骤2：取逆得到Tcw（Camera在World中的位姿）
         T_cw = np.linalg.inv(T_wc)
@@ -258,8 +286,5 @@ if __name__ == '__main__':
     try:
         tf_pub = TFPublisher()
         rospy.spin()
-    except rospy.ROSInterruptException:
-        rospy.loginfo("TF 发布节点已关闭")
-
     except rospy.ROSInterruptException:
         rospy.loginfo("TF 发布节点已关闭")

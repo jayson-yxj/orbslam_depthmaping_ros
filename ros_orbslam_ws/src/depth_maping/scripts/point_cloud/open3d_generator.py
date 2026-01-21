@@ -18,11 +18,12 @@ class Open3DPointCloudGenerator(BasePointCloudGenerator):
         """初始化"""
         pass
     
-    def generate(self, 
+    def generate(self,
                  depth: np.ndarray,
                  rgb: np.ndarray,
                  camera_params: Dict[str, float],
-                 pose: np.ndarray) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+                 pose: np.ndarray,
+                 max_depth: float = 100.0) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """
         生成点云
         
@@ -31,6 +32,7 @@ class Open3DPointCloudGenerator(BasePointCloudGenerator):
             rgb: RGB图像 (H, W, 3), uint8
             camera_params: 相机内参 {'fx', 'fy', 'cx', 'cy'}
             pose: 位姿矩阵 (4, 4) 或 pypose.SE3对象
+            max_depth: 最大深度阈值（米），默认100米
             
         Returns:
             points: 点云坐标 (N, 3), float32
@@ -43,8 +45,8 @@ class Open3DPointCloudGenerator(BasePointCloudGenerator):
         # 创建网格坐标
         u, v = np.meshgrid(np.arange(w), np.arange(h))
         
-        # 有效深度掩码
-        valid_mask = (depth > 0) & np.isfinite(depth)
+        # 有效深度掩码（在相机坐标系中过滤深度）
+        valid_mask = (depth > 0.1) & (depth < max_depth) & np.isfinite(depth)
         
         # 计算3D坐标（相机坐标系）
         Z = depth[valid_mask]
@@ -84,11 +86,11 @@ class Open3DPointCloudGenerator(BasePointCloudGenerator):
         点云过滤
         
         Args:
-            points: 输入点云 (N, 3)
+            points: 输入点云 (N, 3) - 世界坐标系中的点
             colors: 输入颜色 (N, 3)
             filter_params: 过滤参数
                 {
-                    'depth_range': [min, max],
+                    'depth_range': [min, max],  # 注意：这里的depth_range已经不再使用
                     'height_filter_mode': 'relative' or 'absolute',
                     'height_ratio_range': [ratio_min, ratio_max],  # 相对模式
                     'height_range': [min, max]  # 绝对模式
@@ -103,12 +105,9 @@ class Open3DPointCloudGenerator(BasePointCloudGenerator):
         
         mask = np.ones(len(points), dtype=bool)
         
-        # 1. 深度范围过滤
-        if 'depth_range' in filter_params:
-            min_d, max_d = filter_params['depth_range']
-            depths = np.linalg.norm(points, axis=1)
-            depth_mask = (depths >= min_d) & (depths <= max_d)
-            mask &= depth_mask
+        # 1. 深度范围过滤（已移除）
+        # 注意：depth_range过滤已经在generate()方法中通过深度图完成
+        # 这里不再使用到世界原点的距离进行过滤，避免远离原点时点云消失的问题
         
         # 2. 高度范围过滤
         height_filter_mode = filter_params.get('height_filter_mode', 'relative')
