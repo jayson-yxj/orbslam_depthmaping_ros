@@ -3,7 +3,7 @@
 =======
 单目基于 ORB-SLAM3 的视觉 SLAM 系统，集成深度估计和 3D 点云重建功能。
 <img width="1906" height="1035" alt="image" src="https://github.com/user-attachments/assets/e612218b-7c36-474b-8a05-53a5cef22a38" />
-
+<img width="605" height="318" alt="image" src="https://github.com/user-attachments/assets/6fad0955-22b5-4603-9e24-cdd833b0bf23" />
 ## 📋 目录
 
 - [项目简介](#项目简介)
@@ -437,16 +437,16 @@ rostopic echo /orb_slam3/image_pose
 - 🐛 **修复机器人朝向问题**：调整 CV 到 ROS 坐标系转换矩阵
 - ✨ **统一尺度因子配置**：TF 发布节点现在从配置文件读取尺度因子
 - ✨ **改进 .gitignore**：自动忽略 build 目录和临时文件
+- ✨ **实现模块化架构**
+- ✨ **添加并行处理支持**
+- ✨ **添加重力对齐功能**
+- ✨ **集成机器人导航**
 - 📝 **更新文档**：添加详细的配置说明和故障排除指南
 
 ### v1.0.0 (2025-12-24)
 - ✨ 初始版本发布
 - ✨ 集成 ORB-SLAM3 和 Depth Anything V2
 - ✨ 添加自动构建脚本
-- ✨ 实现模块化架构
-- ✨ 添加并行处理支持
-- ✨ 添加重力对齐功能
-- ✨ 集成机器人导航
 - 🐛 修复模块导入问题
 - 🐛 修复 Open3D 可视化错误
 - 📝 完善文档
