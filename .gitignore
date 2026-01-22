@@ -102,3 +102,10 @@ ros_orbslam_ws/src/depth_maping/scripts/GE_information/
 *.yaml
 !*config*.yaml
 !default_config.yaml
+
+# 文档文件（除了根目录的README.md）
+*.md
+!README.md
+docs/
+*/docs/
+*/*/docs/
