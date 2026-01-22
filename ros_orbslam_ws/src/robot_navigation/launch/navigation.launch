@@ -7,16 +7,25 @@
   
   <!-- 参数配置 -->
   <arg name="enable_rviz" default="true" doc="是否启动 RViz 可视化"/>
-  <arg name="enable_cmd_relay" default="false" doc="是否启动速度命令转发（连接实际机器人时启用）"/>
+  <arg name="enable_cmd_relay" default="true" doc="是否启动速度命令转发（连接实际机器人时启用）"/>
   
-  <!-- 1. TF 发布节点 -->
+  <!-- 1. 静态TF发布：map -> odom（仿真环境使用） -->
+  <!-- 在仿真环境中，Gazebo提供odom坐标系，我们需要发布map->odom的静态变换 -->
+  <!-- 旋转90度（1.5708弧度）以对齐点云坐标系与机器人坐标系 -->
+  <node pkg="tf" type="static_transform_publisher" name="map_to_odom_publisher"
+        args="0 0 0 1.5708 0 0 map odom 100" output="screen"/>
+  
+  <!-- 2. TF 发布节点（用于真实SLAM时） -->
   <!-- 将 ORB-SLAM3 位姿转换为 TF 树: map -> odom -> base_link -> camera -->
+  <!-- 仿真环境下可以注释掉，因为已经有静态TF -->
+  
   <node pkg="robot_navigation" type="tf_publisher.py" name="tf_publisher" output="screen">
     <param name="map_frame" value="map"/>
     <param name="odom_frame" value="odom"/>
     <param name="base_link_frame" value="base_link"/>
     <param name="camera_frame" value="camera"/>
   </node>
+ 
   
   <!-- 2. move_base 导航节点 -->
   <include file="$(find robot_navigation)/launch/move_base.launch"/>

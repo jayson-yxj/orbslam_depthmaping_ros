@@ -5,6 +5,8 @@
 # This file includes the relevant testing commands required for 
 # testing this directory and lists subdirectories to be tested as well.
 subdirs("gtest")
+subdirs("aws-robomaker-bookstore-world")
+subdirs("aws-robomaker-small-house-world")
 subdirs("depth_maping")
 subdirs("ORB_SLAM3_ROS")
 subdirs("pub_video")

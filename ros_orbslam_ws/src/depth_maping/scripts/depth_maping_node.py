@@ -220,8 +220,8 @@ class DepthMappingNode:
         undistorted_frame = cv2.remap(raw_image, self.map1, self.map2, cv2.INTER_LINEAR)
         
         # 显示去畸变图像
-        cv2.imshow("Undistorted Frame", undistorted_frame)
-        cv2.waitKey(1)
+        # cv2.imshow("Undistorted Frame", undistorted_frame)
+        # cv2.waitKey(1)
         
         # 初始化重力估计目录
         if self.is_first_frame:
